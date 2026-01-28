@@ -1,0 +1,29 @@
+{
+  "name": "route-animator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "mapbox-gl": "^3.3.0",
+    "zustand": "^4.5.2",
+    "@turf/turf": "^7.0.0",
+    "lucide-react": "^0.395.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "~5.4.2",
+    "vite": "^5.4.2",
+    "eslint": "^9.8.0",
+    "@types/mapbox-gl": "^3.1.0"
+  }
+}
