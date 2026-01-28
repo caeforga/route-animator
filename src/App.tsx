@@ -1,5 +1,6 @@
 import { MapContainer } from '@/components/Map';
 import { Sidebar } from '@/components/Sidebar';
+import { useGeoLocation } from '@/hooks/useGeoLocation';
 
 /**
  * Route Animator - Main Application Component
@@ -11,6 +12,7 @@ import { Sidebar } from '@/components/Sidebar';
  * - MapContainer: Handles Mapbox integration, markers, and animation rendering
  * - Sidebar: Contains all controls organized in tabs
  * - Zustand store: Centralized state management
+ * - useGeoLocation: Auto-detects user's country and centers map on capital
  * 
  * MVP Scope:
  * - [x] Interactive map with Mapbox GL JS
@@ -18,6 +20,7 @@ import { Sidebar } from '@/components/Sidebar';
  * - [x] Multiple transport modes per segment
  * - [x] Route animation with moving marker
  * - [x] Video export via Canvas + MediaRecorder
+ * - [x] Auto-detect user location
  * 
  * TODOs for SaaS Scaling:
  * - [ ] Backend API for route persistence
@@ -31,6 +34,9 @@ import { Sidebar } from '@/components/Sidebar';
  */
 
 function App() {
+  // Auto-detect user's country and center map on their capital
+  useGeoLocation();
+
   return (
     <div className="app-layout">
       <MapContainer />

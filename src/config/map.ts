@@ -3,12 +3,11 @@ import { MapStyle, Coordinates, ExportConfig } from '@/types';
 /**
  * Mapbox configuration
  * 
- * IMPORTANT: Replace with your own Mapbox access token
- * Get one at: https://account.mapbox.com/access-tokens/
- * 
- * TODO: Move to environment variable for production
+ * Token loaded from environment variable (VITE_MAPBOX_ACCESS_TOKEN)
+ * Vite automatically loads .env files - no dotenv needed
+ * See .env.example for setup instructions
  */
-export const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoiY2FlZm9yZ2EiLCJhIjoiY21reWJweGl3MDVxbTNmb2ZlZW16dnpueiJ9.oQb_xXkI8BorsZuSMjby_g';
+export const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string;
 
 // Mapbox style URLs
 export const MAP_STYLES: Record<MapStyle, string> = {

@@ -144,6 +144,16 @@ export function MapContainer() {
     mapRef.current.setStyle(MAP_STYLES[mapConfig.style]);
   }, [mapConfig.style]);
 
+  // Update map center/zoom when location is detected
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.flyTo({
+      center: mapConfig.center,
+      zoom: mapConfig.zoom,
+      duration: 1500,
+    });
+  }, [mapConfig.center, mapConfig.zoom]);
+
   // Resize map when sidebar toggles
   useEffect(() => {
     if (!mapRef.current) return;
