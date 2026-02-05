@@ -10,6 +10,25 @@ import * as turf from '@turf/turf';
  * Calculates marker position along the path using Turf.js
  */
 
+/**
+ * Smooths a path using bezier spline interpolation
+ * Only applies to paths with more than 2 points
+ */
+function smoothPath(coordinates: Coordinates[], transportMode: string): Coordinates[] {
+  // Don't smooth plane routes (they use arc) or simple 2-point lines
+  if (transportMode === 'plane' || coordinates.length <= 2) {
+    return coordinates;
+  }
+
+  try {
+    const line = turf.lineString(coordinates);
+    const smoothed = turf.bezierSpline(line, { resolution: 10000, sharpness: 0.85 });
+    return smoothed.geometry.coordinates as Coordinates[];
+  } catch (e) {
+    return coordinates;
+  }
+}
+
 export interface AnimationFrame {
   markerPosition: Coordinates;
   currentSegmentIndex: number;
@@ -74,8 +93,11 @@ export function useAnimation() {
       return null;
     }
 
-    // Create a line from the segment path
-    const line = turf.lineString(currentSegment.path);
+    // Apply smoothing to the current segment path for smooth animation
+    const smoothedPath = smoothPath(currentSegment.path, currentSegment.transportMode);
+
+    // Create a line from the smoothed segment path
+    const line = turf.lineString(smoothedPath);
     const totalLength = turf.length(line, { units: 'kilometers' });
     const currentDistance = totalLength * segmentProgress;
 
@@ -86,15 +108,16 @@ export function useAnimation() {
     // Calculate drawn path (all completed segments + partial current segment)
     const drawnPath: Coordinates[] = [];
     
-    // Add all completed segments
+    // Add all completed segments (smoothed)
     for (let i = 0; i < currentSegmentIndex; i++) {
-      drawnPath.push(...route.segments[i].path);
+      const seg = route.segments[i];
+      drawnPath.push(...smoothPath(seg.path, seg.transportMode));
     }
 
-    // Add partial current segment
-    if (currentSegment.path.length > 0) {
+    // Add partial current segment (smoothed)
+    if (smoothedPath.length > 0) {
       const slicedLine = turf.lineSlice(
-        turf.point(currentSegment.path[0]),
+        turf.point(smoothedPath[0]),
         point,
         line
       );

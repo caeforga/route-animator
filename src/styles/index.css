@@ -941,16 +941,9 @@ body {
 }
 
 .waypoint-marker-inner {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
   border: 3px solid white;
   box-shadow: var(--shadow-md);
   transition: all var(--transition-fast);
@@ -958,12 +951,193 @@ body {
 
 .waypoint-marker-inner.selected {
   transform: scale(1.2);
+}
+
+/* Start marker - green with play icon */
+.waypoint-start .waypoint-marker-inner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #10B981;
+  color: white;
+}
+
+.waypoint-start .waypoint-marker-inner.selected {
+  background: #059669;
+}
+
+/* Finish marker - checkered flag style */
+.waypoint-finish .waypoint-marker-inner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #EF4444;
+  color: white;
+}
+
+.waypoint-finish .waypoint-marker-inner.selected {
+  background: #DC2626;
+}
+
+/* Intermediate markers - small dots */
+.waypoint-intermediate .waypoint-marker-inner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border-width: 2px;
+}
+
+.waypoint-intermediate .waypoint-marker-inner.selected {
   background: var(--color-primary-hover);
+  width: 22px;
+  height: 22px;
+}
+
+.waypoint-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
 }
 
 .animation-marker {
   font-size: 24px;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+/* =========================================
+   Path Node Editing
+   ========================================= */
+.path-node {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid white;
+  box-shadow: var(--shadow-md);
+  cursor: grab;
+  transition: transform var(--transition-fast);
+}
+
+.path-node:hover {
+  transform: scale(1.3);
+}
+
+.path-node:active {
+  cursor: grabbing;
+}
+
+.path-node.endpoint {
+  width: 10px;
+  height: 10px;
+  background: var(--color-text-muted);
+  cursor: default;
+  pointer-events: none;
+}
+
+.path-node-add {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  border: 2px dashed var(--color-primary);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all var(--transition-fast);
+}
+
+.path-node-add:hover {
+  opacity: 1;
+  transform: scale(1.3);
+  background: var(--color-primary-light);
+}
+
+/* Segment controls with action buttons */
+.segment-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.segment-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.btn-segment-action {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.btn-segment-action:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.btn-segment-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-segment-action.active {
+  border-color: var(--color-success);
+  background: #D1FAE5;
+  color: var(--color-success);
+}
+
+.btn-edit-path {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.btn-edit-path:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.btn-edit-path.active {
+  border-color: var(--color-success);
+  background: #D1FAE5;
+  color: var(--color-success);
+}
+
+.segment-transport.editing {
+  background: var(--color-primary-light);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  margin: var(--spacing-xs) 0;
+}
+
+.edit-path-hint {
+  margin-top: var(--spacing-xs);
+  padding-left: calc(2px + var(--spacing-md));
+}
+
+.edit-path-hint p {
+  font-size: 11px;
+  color: var(--color-primary);
+  font-style: italic;
 }
 
 /* =========================================

@@ -13,7 +13,11 @@ import {
   Search,
   MapPin,
   Loader2,
-  X
+  X,
+  Pencil,
+  Check,
+  RotateCcw,
+  RouteIcon
 } from 'lucide-react';
 
 /**
@@ -44,12 +48,15 @@ export function WaypointPanel() {
     removeWaypoint,
     selectedWaypointId,
     selectWaypoint,
+    selectedSegmentId,
+    selectSegment,
     updateSegmentTransport,
     updateSegmentPath,
   } = useRouteStore();
 
   const { fetchRoute } = useRouting();
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [loadingSegmentId, setLoadingSegmentId] = useState<string | null>(null);
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,8 +173,97 @@ export function WaypointPanel() {
     }
   };
 
-  const handleTransportChange = (segmentId: string, mode: TransportMode) => {
+  const handleTransportChange = async (segmentId: string, mode: TransportMode) => {
+    const segment = route?.segments.find(s => s.id === segmentId);
+    if (!segment || !route) {
+      updateSegmentTransport(segmentId, mode);
+      return;
+    }
+
+    const previousMode = segment.transportMode;
+    const changingToPlane = mode === 'plane' && previousMode !== 'plane';
+    const changingFromPlane = mode !== 'plane' && previousMode === 'plane';
+
+    // Update transport mode first
     updateSegmentTransport(segmentId, mode);
+
+    const startWp = route.waypoints.find(wp => wp.id === segment.startWaypointId);
+    const endWp = route.waypoints.find(wp => wp.id === segment.endWaypointId);
+
+    if (!startWp || !endWp) return;
+
+    if (changingToPlane) {
+      // Changing to plane: calculate arc path automatically
+      setLoadingSegmentId(segmentId);
+      try {
+        const path = await fetchRoute(startWp.coordinates, endWp.coordinates, mode);
+        updateSegmentPath(segmentId, path);
+      } catch (error) {
+        console.error('Error calculating flight path:', error);
+      } finally {
+        setLoadingSegmentId(null);
+      }
+    } else if (changingFromPlane) {
+      // Changing from plane to ground: just straight line
+      // User can click "Calculate route" button for real route
+      updateSegmentPath(segmentId, [startWp.coordinates, endWp.coordinates]);
+    }
+  };
+
+  // Handle edit path mode for a segment
+  const handleEditPath = (segmentId: string) => {
+    if (editMode === 'edit-path' && selectedSegmentId === segmentId) {
+      // Exit edit mode
+      setEditMode('select');
+      selectSegment(null);
+    } else {
+      // Enter edit mode for this segment
+      selectSegment(segmentId);
+      setEditMode('edit-path');
+    }
+  };
+
+  const isEditingSegment = (segmentId: string) => {
+    return editMode === 'edit-path' && selectedSegmentId === segmentId;
+  };
+
+  // Calculate route for a single segment
+  const handleCalculateSegmentRoute = async (segmentId: string) => {
+    const segment = route?.segments.find(s => s.id === segmentId);
+    if (!segment || !route) return;
+
+    const startWp = route.waypoints.find(wp => wp.id === segment.startWaypointId);
+    const endWp = route.waypoints.find(wp => wp.id === segment.endWaypointId);
+
+    if (!startWp || !endWp) return;
+
+    setLoadingSegmentId(segmentId);
+    try {
+      const path = await fetchRoute(
+        startWp.coordinates,
+        endWp.coordinates,
+        segment.transportMode
+      );
+      updateSegmentPath(segmentId, path);
+    } catch (error) {
+      console.error('Error calculating segment route:', error);
+    } finally {
+      setLoadingSegmentId(null);
+    }
+  };
+
+  // Reset segment to straight line
+  const handleResetSegment = (segmentId: string) => {
+    const segment = route?.segments.find(s => s.id === segmentId);
+    if (!segment || !route) return;
+
+    const startWp = route.waypoints.find(wp => wp.id === segment.startWaypointId);
+    const endWp = route.waypoints.find(wp => wp.id === segment.endWaypointId);
+
+    if (!startWp || !endWp) return;
+
+    // Reset to direct line between waypoints
+    updateSegmentPath(segmentId, [startWp.coordinates, endWp.coordinates]);
   };
 
   if (!route) {
@@ -293,35 +389,89 @@ export function WaypointPanel() {
             </div>
 
             {/* Segment transport selector (between waypoints) */}
-            {index < route.waypoints.length - 1 && (
-              <div className="segment-transport">
-                <span className="segment-line" />
-                <div className="transport-selector">
-                  {TRANSPORT_MODES.map((mode) => {
-                    const config = TRANSPORT_CONFIGS[mode];
-                    const segment = route.segments.find(
-                      s => s.startWaypointId === waypoint.id
-                    );
-                    const isActive = segment?.transportMode === mode;
+            {index < route.waypoints.length - 1 && (() => {
+              const segment = route.segments.find(
+                s => s.startWaypointId === waypoint.id
+              );
+              const isEditing = segment ? isEditingSegment(segment.id) : false;
+              const isGroundTransport = segment?.transportMode !== 'plane';
+              const isLoadingThisSegment = segment?.id === loadingSegmentId;
 
-                    return (
-                      <button
-                        key={mode}
-                        className={`transport-btn ${isActive ? 'active' : ''}`}
-                        onClick={() => segment && handleTransportChange(segment.id, mode)}
-                        title={config.label}
-                        style={{ 
-                          borderColor: isActive ? config.color : undefined,
-                          backgroundColor: isActive ? `${config.color}20` : undefined,
-                        }}
-                      >
-                        {config.icon}
-                      </button>
-                    );
-                  })}
+              return (
+                <div className={`segment-transport ${isEditing ? 'editing' : ''}`}>
+                  <span className="segment-line" />
+                  <div className="segment-controls">
+                    <div className="transport-selector">
+                      {TRANSPORT_MODES.map((mode) => {
+                        const config = TRANSPORT_CONFIGS[mode];
+                        const isActive = segment?.transportMode === mode;
+
+                        return (
+                          <button
+                            key={mode}
+                            className={`transport-btn ${isActive ? 'active' : ''}`}
+                            onClick={() => segment && handleTransportChange(segment.id, mode)}
+                            title={config.label}
+                            disabled={isEditing || isLoadingThisSegment}
+                            style={{ 
+                              borderColor: isActive ? config.color : undefined,
+                              backgroundColor: isActive ? `${config.color}20` : undefined,
+                            }}
+                          >
+                            {config.icon}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Segment action buttons - only for ground transport */}
+                    {isGroundTransport && segment && (
+                      <div className="segment-actions">
+                        {/* Calculate route for this segment */}
+                        <button
+                          className="btn-segment-action"
+                          onClick={() => handleCalculateSegmentRoute(segment.id)}
+                          disabled={isEditing || isLoadingThisSegment}
+                          title="Calcular ruta real"
+                        >
+                          {isLoadingThisSegment ? (
+                            <Loader2 size={14} className="spinning" />
+                          ) : (
+                            <RouteIcon size={14} />
+                          )}
+                        </button>
+                        
+                        {/* Reset to straight line */}
+                        <button
+                          className="btn-segment-action"
+                          onClick={() => handleResetSegment(segment.id)}
+                          disabled={isEditing || isLoadingThisSegment}
+                          title="Resetear a línea recta"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                        
+                        {/* Edit path button */}
+                        <button
+                          className={`btn-segment-action ${isEditing ? 'active' : ''}`}
+                          onClick={() => handleEditPath(segment.id)}
+                          disabled={isLoadingThisSegment}
+                          title={isEditing ? 'Finalizar edición' : 'Editar nodos'}
+                        >
+                          {isEditing ? <Check size={14} /> : <Pencil size={14} />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {isEditing && (
+                    <div className="edit-path-hint">
+                      <p>Arrastra los nodos en el mapa para modificar la ruta</p>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ))}
 
