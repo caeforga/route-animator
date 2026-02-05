@@ -17,7 +17,8 @@ import {
   Pencil,
   Check,
   RotateCcw,
-  RouteIcon
+  RouteIcon,
+  ChevronDown
 } from 'lucide-react';
 
 /**
@@ -57,6 +58,7 @@ export function WaypointPanel() {
   const { fetchRoute } = useRouting();
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [loadingSegmentId, setLoadingSegmentId] = useState<string | null>(null);
+  const [expandedTransportId, setExpandedTransportId] = useState<string | null>(null);
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,11 +68,16 @@ export function WaypointPanel() {
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Close results when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowResults(false);
+      }
+      // Close transport dropdown if clicking outside
+      const target = e.target as HTMLElement;
+      if (!target.closest('.transport-selector-dropdown')) {
+        setExpandedTransportId(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -397,31 +404,62 @@ export function WaypointPanel() {
               const isGroundTransport = segment?.transportMode !== 'plane';
               const isLoadingThisSegment = segment?.id === loadingSegmentId;
 
+              const isExpanded = expandedTransportId === segment?.id;
+              const activeConfig = segment ? TRANSPORT_CONFIGS[segment.transportMode] : TRANSPORT_CONFIGS.car;
+
               return (
                 <div className={`segment-transport ${isEditing ? 'editing' : ''}`}>
                   <span className="segment-line" />
                   <div className="segment-controls">
-                    <div className="transport-selector">
-                      {TRANSPORT_MODES.map((mode) => {
-                        const config = TRANSPORT_CONFIGS[mode];
-                        const isActive = segment?.transportMode === mode;
+                    <div className="transport-selector-dropdown">
+                      {/* Active transport button */}
+                      <button
+                        className="transport-active-btn"
+                        onClick={() => setExpandedTransportId(isExpanded ? null : segment?.id || null)}
+                        disabled={isEditing || isLoadingThisSegment}
+                        style={{ 
+                          borderColor: activeConfig.color,
+                          backgroundColor: `${activeConfig.color}15`,
+                        }}
+                        title={activeConfig.label}
+                      >
+                        {activeConfig.icon}
+                        <ChevronDown 
+                          size={12} 
+                          className={`transport-chevron ${isExpanded ? 'expanded' : ''}`} 
+                        />
+                      </button>
+                      
+                      {/* Dropdown with all options */}
+                      {isExpanded && (
+                        <div className="transport-dropdown">
+                          {TRANSPORT_MODES.map((mode) => {
+                            const config = TRANSPORT_CONFIGS[mode];
+                            const isActive = segment?.transportMode === mode;
 
-                        return (
-                          <button
-                            key={mode}
-                            className={`transport-btn ${isActive ? 'active' : ''}`}
-                            onClick={() => segment && handleTransportChange(segment.id, mode)}
-                            title={config.label}
-                            disabled={isEditing || isLoadingThisSegment}
-                            style={{ 
-                              borderColor: isActive ? config.color : undefined,
-                              backgroundColor: isActive ? `${config.color}20` : undefined,
-                            }}
-                          >
-                            {config.icon}
-                          </button>
-                        );
-                      })}
+                            return (
+                              <button
+                                key={mode}
+                                className={`transport-dropdown-btn ${isActive ? 'active' : ''}`}
+                                onClick={() => {
+                                  if (segment) {
+                                    handleTransportChange(segment.id, mode);
+                                    setExpandedTransportId(null);
+                                  }
+                                }}
+                                title={config.label}
+                                style={{ 
+                                  borderColor: isActive ? config.color : undefined,
+                                  backgroundColor: isActive ? `${config.color}20` : undefined,
+                                }}
+                              >
+                                {config.icon}
+                                <span className="transport-label">{config.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     
                     {/* Segment action buttons - only for ground transport */}

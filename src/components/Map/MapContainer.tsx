@@ -46,7 +46,6 @@ export function MapContainer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const pathNodesRef = useRef<mapboxgl.Marker[]>([]);
   const animationMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const {
@@ -176,6 +175,44 @@ export function MapContainer() {
           'line-width': 4,
         },
       });
+
+      // Add source for editable path nodes (native Mapbox circles)
+      map.addSource('edit-nodes', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [],
+        },
+      });
+
+      // Layer for intermediate draggable nodes (not endpoints)
+      map.addLayer({
+        id: 'edit-nodes-layer',
+        type: 'circle',
+        source: 'edit-nodes',
+        filter: ['==', ['get', 'type'], 'node'],
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#3B82F6',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+
+      // Layer for midpoints (smaller, for adding new nodes)
+      map.addLayer({
+        id: 'edit-midpoints-layer',
+        type: 'circle',
+        source: 'edit-nodes',
+        filter: ['==', ['get', 'type'], 'midpoint'],
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#9CA3AF',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.8,
+        },
+      });
     });
 
     // Handle clicks for adding waypoints (uses refs to get current values)
@@ -242,6 +279,148 @@ export function MapContainer() {
         
         e.preventDefault();
       });
+    });
+
+    // ========== Native node dragging system ==========
+    let draggingNodeIndex: number | null = null;
+    let dragPath: Coordinates[] | null = null;
+
+    // Cursor and hover for draggable nodes
+    map.on('mouseenter', 'edit-nodes-layer', () => {
+      map.getCanvas().style.cursor = 'grab';
+    });
+    
+    map.on('mouseleave', 'edit-nodes-layer', () => {
+      if (draggingNodeIndex === null) {
+        map.getCanvas().style.cursor = '';
+      }
+    });
+
+    // Cursor for midpoints
+    map.on('mouseenter', 'edit-midpoints-layer', () => {
+      map.getCanvas().style.cursor = 'pointer';
+    });
+    
+    map.on('mouseleave', 'edit-midpoints-layer', () => {
+      map.getCanvas().style.cursor = '';
+    });
+
+    // Click on midpoint to add new node
+    map.on('click', 'edit-midpoints-layer', (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const feature = e.features[0];
+      const nodeIndex = feature.properties?.nodeIndex;
+      const segment = selectedSegmentRef.current;
+      
+      if (segment && typeof nodeIndex === 'number') {
+        const newPath = [...segment.path];
+        const coords = (feature.geometry as any).coordinates as Coordinates;
+        newPath.splice(nodeIndex + 1, 0, coords);
+        updateSegmentPathRef.current(segment.id, newPath);
+      }
+      
+      e.preventDefault();
+    });
+
+    // Start dragging a node
+    map.on('mousedown', 'edit-nodes-layer', (e) => {
+      if (!e.features || e.features.length === 0) return;
+      
+      const feature = e.features[0];
+      const nodeIndex = feature.properties?.nodeIndex;
+      const segment = selectedSegmentRef.current;
+      
+      if (segment && typeof nodeIndex === 'number') {
+        e.preventDefault();
+        draggingNodeIndex = nodeIndex;
+        dragPath = [...segment.path];
+        map.getCanvas().style.cursor = 'grabbing';
+        
+        // Disable map dragging while dragging node
+        map.dragPan.disable();
+      }
+    });
+
+    // Drag node
+    map.on('mousemove', (e) => {
+      if (draggingNodeIndex === null || !dragPath) return;
+      
+      const segment = selectedSegmentRef.current;
+      if (!segment) return;
+      
+      // Update the path with new position
+      dragPath[draggingNodeIndex] = [e.lngLat.lng, e.lngLat.lat];
+      
+      // Update route visual in real-time
+      if (map.getSource('route')) {
+        const route = useRouteStore.getState().route;
+        const allSegments = route?.segments || [];
+        const features = allSegments.map((seg) => ({
+          type: 'Feature' as const,
+          properties: {
+            transportMode: seg.transportMode,
+            id: seg.id,
+          },
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: seg.id === segment.id ? dragPath : seg.path,
+          },
+        }));
+        
+        (map.getSource('route') as mapboxgl.GeoJSONSource).setData({
+          type: 'FeatureCollection',
+          features,
+        });
+      }
+      
+      // Update the dragged node position
+      if (map.getSource('edit-nodes')) {
+        const pathLength = dragPath.length;
+        const features: GeoJSON.Feature[] = [];
+        
+        dragPath.forEach((coord, index) => {
+          const isEndpoint = index === 0 || index === pathLength - 1;
+          if (!isEndpoint) {
+            features.push({
+              type: 'Feature',
+              properties: { type: 'node', nodeIndex: index },
+              geometry: { type: 'Point', coordinates: coord },
+            });
+          }
+          
+          if (index < pathLength - 1) {
+            const nextCoord = dragPath![index + 1];
+            features.push({
+              type: 'Feature',
+              properties: { type: 'midpoint', nodeIndex: index },
+              geometry: {
+                type: 'Point',
+                coordinates: [(coord[0] + nextCoord[0]) / 2, (coord[1] + nextCoord[1]) / 2],
+              },
+            });
+          }
+        });
+        
+        (map.getSource('edit-nodes') as mapboxgl.GeoJSONSource).setData({
+          type: 'FeatureCollection',
+          features,
+        });
+      }
+    });
+
+    // End drag
+    map.on('mouseup', () => {
+      if (draggingNodeIndex !== null && dragPath) {
+        const segment = selectedSegmentRef.current;
+        if (segment) {
+          updateSegmentPathRef.current(segment.id, dragPath);
+        }
+        
+        draggingNodeIndex = null;
+        dragPath = null;
+        map.getCanvas().style.cursor = '';
+        map.dragPan.enable();
+      }
     });
 
     mapRef.current = map;
@@ -351,119 +530,55 @@ export function MapContainer() {
     });
   }, [route?.waypoints, selectedWaypointId, editMode]);
 
-  // Update path nodes for editing
+  // Update path nodes for editing using native Mapbox layers
   useEffect(() => {
-    // Remove existing path node markers
-    pathNodesRef.current.forEach((marker) => marker.remove());
-    pathNodesRef.current = [];
+    if (!mapRef.current || !mapRef.current.getSource('edit-nodes')) return;
 
-    if (!mapRef.current || editMode !== 'edit-path' || !selectedSegment) return;
+    // Clear nodes if not in edit mode
+    if (editMode !== 'edit-path' || !selectedSegment) {
+      (mapRef.current.getSource('edit-nodes') as mapboxgl.GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      return;
+    }
 
     const path = selectedSegment.path;
     if (path.length < 2) return;
 
-    // Create markers for each node in the path (skip first and last as they are waypoints)
-    // But also add midpoints between each pair of nodes for adding new nodes
-    const allPoints: { coord: Coordinates; isNode: boolean; nodeIndex: number }[] = [];
+    // Build features for nodes and midpoints
+    const features: GeoJSON.Feature[] = [];
     
     path.forEach((coord, index) => {
-      // Add existing node
-      allPoints.push({ coord, isNode: true, nodeIndex: index });
+      const isEndpoint = index === 0 || index === path.length - 1;
+      
+      // Only add intermediate nodes (not endpoints)
+      if (!isEndpoint) {
+        features.push({
+          type: 'Feature',
+          properties: { type: 'node', nodeIndex: index },
+          geometry: { type: 'Point', coordinates: coord },
+        });
+      }
       
       // Add midpoint between this and next node (for adding new nodes)
       if (index < path.length - 1) {
         const nextCoord = path[index + 1];
-        const midpoint: Coordinates = [
-          (coord[0] + nextCoord[0]) / 2,
-          (coord[1] + nextCoord[1]) / 2,
-        ];
-        allPoints.push({ coord: midpoint, isNode: false, nodeIndex: index });
+        features.push({
+          type: 'Feature',
+          properties: { type: 'midpoint', nodeIndex: index },
+          geometry: {
+            type: 'Point',
+            coordinates: [(coord[0] + nextCoord[0]) / 2, (coord[1] + nextCoord[1]) / 2],
+          },
+        });
       }
     });
 
-    allPoints.forEach((point, idx) => {
-      const el = document.createElement('div');
-      el.className = point.isNode ? 'path-node' : 'path-node-add';
-      
-      if (point.isNode) {
-        // Check if this is the first or last node (waypoint markers)
-        const isEndpoint = point.nodeIndex === 0 || point.nodeIndex === path.length - 1;
-        if (isEndpoint) {
-          el.className = 'path-node endpoint';
-        }
-      }
-
-      const marker = new mapboxgl.Marker({
-        element: el,
-        draggable: point.isNode,
-      })
-        .setLngLat(point.coord)
-        .addTo(mapRef.current!);
-
-      if (point.isNode) {
-        // Handle dragging existing nodes - instant update WITHOUT smoothing for performance
-        marker.on('drag', () => {
-          const newPos = marker.getLngLat();
-          const segment = selectedSegmentRef.current;
-          if (!segment) return;
-
-          const newPath = [...segment.path];
-          newPath[point.nodeIndex] = [newPos.lng, newPos.lat];
-          
-          // Update visually in real-time WITHOUT smoothing (instant feedback)
-          if (mapRef.current?.getSource('route')) {
-            const allSegments = route?.segments || [];
-            const features = allSegments.map((seg) => ({
-              type: 'Feature' as const,
-              properties: {
-                transportMode: seg.transportMode,
-                id: seg.id,
-              },
-              geometry: {
-                type: 'LineString' as const,
-                // NO smoothing during drag for instant feedback
-                coordinates: seg.id === segment.id ? newPath : seg.path,
-              },
-            }));
-            
-            (mapRef.current.getSource('route') as mapboxgl.GeoJSONSource).setData({
-              type: 'FeatureCollection',
-              features,
-            });
-          }
-        });
-        
-        // Save to store on drag end - smoothing will be applied by the useEffect
-        marker.on('dragend', () => {
-          const newPos = marker.getLngLat();
-          const segment = selectedSegmentRef.current;
-          if (!segment) return;
-
-          const newPath = [...segment.path];
-          newPath[point.nodeIndex] = [newPos.lng, newPos.lat];
-          updateSegmentPathRef.current(segment.id, newPath);
-        });
-      } else {
-        // Handle clicking on midpoint to add new node
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const segment = selectedSegmentRef.current;
-          if (!segment) return;
-
-          const newPath = [...segment.path];
-          // Insert new node after the current index
-          newPath.splice(point.nodeIndex + 1, 0, point.coord);
-          updateSegmentPathRef.current(segment.id, newPath);
-        });
-      }
-
-      pathNodesRef.current.push(marker);
+    (mapRef.current.getSource('edit-nodes') as mapboxgl.GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features,
     });
-
-    return () => {
-      pathNodesRef.current.forEach((marker) => marker.remove());
-      pathNodesRef.current = [];
-    };
   }, [editMode, selectedSegment?.id, selectedSegment?.path]);
 
   // Update route lines with smooth curves
