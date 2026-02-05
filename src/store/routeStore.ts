@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { immer } from 'zustand/middleware/immer';
 import {
   Route,
   Waypoint,
@@ -137,7 +136,7 @@ export const useRouteStore = create<RouteStore>()(
     },
 
     addWaypoint: (coordinates, label) => {
-      const { route } = get();
+      const { route, animation } = get();
       if (!route) return;
 
       const newWaypoint: Waypoint = {
@@ -170,6 +169,15 @@ export const useRouteStore = create<RouteStore>()(
           segments: updatedSegments,
           updatedAt: new Date(),
         },
+        // Reset animation when route changes
+        animation: {
+          ...animation,
+          isPlaying: false,
+          isPaused: false,
+          currentProgress: 0,
+          currentSegmentIndex: 0,
+          segmentProgress: 0,
+        },
       });
     },
 
@@ -189,37 +197,50 @@ export const useRouteStore = create<RouteStore>()(
     },
 
     removeWaypoint: (id) => {
-      const { route, selectedWaypointId } = get();
+      const { route, selectedWaypointId, animation } = get();
       if (!route) return;
 
       const waypointIndex = route.waypoints.findIndex((wp) => wp.id === id);
       if (waypointIndex === -1) return;
 
-      // Remove waypoint
+      // Remove waypoint and update order
       const updatedWaypoints = route.waypoints
         .filter((wp) => wp.id !== id)
         .map((wp, index) => ({ ...wp, order: index }));
 
-      // Remove associated segments and reconnect if needed
-      let updatedSegments = route.segments.filter(
-        (seg) => seg.startWaypointId !== id && seg.endWaypointId !== id
-      );
-
-      // If waypoint was in the middle, create new segment connecting neighbors
-      if (waypointIndex > 0 && waypointIndex < route.waypoints.length - 1) {
-        const prevWaypoint = route.waypoints[waypointIndex - 1];
-        const nextWaypoint = route.waypoints[waypointIndex + 1];
+      // Rebuild segments from scratch based on remaining waypoints (in order)
+      const updatedSegments: RouteSegment[] = [];
+      
+      for (let i = 0; i < updatedWaypoints.length - 1; i++) {
+        const startWp = updatedWaypoints[i];
+        const endWp = updatedWaypoints[i + 1];
         
-        const newSegment: RouteSegment = {
-          id: generateId(),
-          startWaypointId: prevWaypoint.id,
-          endWaypointId: nextWaypoint.id,
-          transportMode: 'car',
-          path: [prevWaypoint.coordinates, nextWaypoint.coordinates],
-        };
-        updatedSegments = [...updatedSegments, newSegment];
+        // Try to find existing segment between these two waypoints
+        const existingSegment = route.segments.find(
+          (seg) => seg.startWaypointId === startWp.id && seg.endWaypointId === endWp.id
+        );
+        
+        if (existingSegment) {
+          // Keep existing segment with its path and transport mode
+          updatedSegments.push(existingSegment);
+        } else {
+          // Create new segment (happens when a middle waypoint is removed)
+          // Try to inherit transport mode from adjacent segments
+          const prevSegment = route.segments.find(s => s.endWaypointId === startWp.id);
+          const nextSegment = route.segments.find(s => s.startWaypointId === endWp.id);
+          const inheritedMode = prevSegment?.transportMode || nextSegment?.transportMode || 'car';
+          
+          updatedSegments.push({
+            id: generateId(),
+            startWaypointId: startWp.id,
+            endWaypointId: endWp.id,
+            transportMode: inheritedMode,
+            path: [startWp.coordinates, endWp.coordinates], // Direct path, needs recalculation
+          });
+        }
       }
 
+      // Reset animation when route structure changes
       set({
         route: {
           ...route,
@@ -228,11 +249,20 @@ export const useRouteStore = create<RouteStore>()(
           updatedAt: new Date(),
         },
         selectedWaypointId: selectedWaypointId === id ? null : selectedWaypointId,
+        // Reset animation to beginning when route changes
+        animation: {
+          ...animation,
+          isPlaying: false,
+          isPaused: false,
+          currentProgress: 0,
+          currentSegmentIndex: 0,
+          segmentProgress: 0,
+        },
       });
     },
 
     reorderWaypoints: (fromIndex, toIndex) => {
-      const { route } = get();
+      const { route, animation } = get();
       if (!route) return;
 
       const waypoints = [...route.waypoints];
@@ -273,6 +303,15 @@ export const useRouteStore = create<RouteStore>()(
           waypoints: updatedWaypoints,
           segments: updatedSegments,
           updatedAt: new Date(),
+        },
+        // Reset animation when route structure changes
+        animation: {
+          ...animation,
+          isPlaying: false,
+          isPaused: false,
+          currentProgress: 0,
+          currentSegmentIndex: 0,
+          segmentProgress: 0,
         },
       });
     },
