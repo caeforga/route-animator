@@ -63,7 +63,7 @@ interface RouteStore {
   pauseAnimation: () => void;
   stopAnimation: () => void;
   setAnimationProgress: (progress: number) => void;
-  setAnimationSpeed: (speed: number) => void;
+  setAnimationDuration: (duration: number) => void;
   updateAnimationFrame: (deltaTime: number) => void;
 
   // Map actions
@@ -101,7 +101,7 @@ export const useRouteStore = create<RouteStore>()(
       currentProgress: 0,
       currentSegmentIndex: 0,
       segmentProgress: 0,
-      speed: 1,
+      duration: 15, // Default 15 seconds
     },
 
     mapConfig: {
@@ -381,7 +381,7 @@ export const useRouteStore = create<RouteStore>()(
           currentProgress: 0,
           currentSegmentIndex: 0,
           segmentProgress: 0,
-          speed: get().animation.speed,
+          duration: get().animation.duration,
         },
       });
     },
@@ -407,11 +407,11 @@ export const useRouteStore = create<RouteStore>()(
       });
     },
 
-    setAnimationSpeed: (speed) => {
+    setAnimationDuration: (duration) => {
       set({
         animation: {
           ...get().animation,
-          speed,
+          duration,
         },
       });
     },
@@ -420,7 +420,8 @@ export const useRouteStore = create<RouteStore>()(
       const { animation, route } = get();
       if (!route || !animation.isPlaying || route.segments.length === 0) return;
 
-      const progressIncrement = (deltaTime / 1000) * 0.05 * animation.speed;
+      // Progress increment based on duration: complete animation in 'duration' seconds
+      const progressIncrement = deltaTime / (animation.duration * 1000);
       const newProgress = Math.min(animation.currentProgress + progressIncrement, 1);
 
       if (newProgress >= 1) {
@@ -511,7 +512,7 @@ export const useRouteStore = create<RouteStore>()(
           currentProgress: 0,
           currentSegmentIndex: 0,
           segmentProgress: 0,
-          speed: 1,
+          duration: 15,
         },
       });
     },
@@ -527,7 +528,7 @@ export const useRouteStore = create<RouteStore>()(
           currentProgress: 0,
           currentSegmentIndex: 0,
           segmentProgress: 0,
-          speed: 1,
+          duration: 15,
         },
       });
     },

@@ -4,7 +4,7 @@ import {
   Play, 
   Pause, 
   RotateCcw,
-  Gauge
+  Clock
 } from 'lucide-react';
 
 /**
@@ -14,18 +14,11 @@ import {
  * - Play/Pause controls
  * - Reset to beginning
  * - Progress slider (scrubbing updates map in real-time)
- * - Speed control
+ * - Duration control (5-30 seconds)
  */
 
-const SPEED_OPTIONS = [
-  { value: 0.5, label: '0.5x' },
-  { value: 1, label: '1x' },
-  { value: 2, label: '2x' },
-  { value: 4, label: '4x' },
-];
-
 export function AnimationPanel() {
-  const { route, setAnimationProgress, setAnimationSpeed } = useRouteStore();
+  const { route, setAnimationProgress, setAnimationDuration } = useRouteStore();
   const { 
     animation, 
     play, 
@@ -43,8 +36,9 @@ export function AnimationPanel() {
     setAnimationProgress(value);
   };
 
-  const handleSpeedChange = (speed: number) => {
-    setAnimationSpeed(speed);
+  const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10);
+    setAnimationDuration(value);
   };
 
   const handlePlayPause = () => {
@@ -106,22 +100,23 @@ export function AnimationPanel() {
             />
           </div>
 
-          {/* Speed Control */}
-          <div className="animation-speed">
+          {/* Duration Control */}
+          <div className="animation-duration">
             <label className="form-label">
-              <Gauge size={16} />
-              Velocidad
+              <Clock size={16} />
+              Duración: {animation.duration}s
             </label>
-            <div className="speed-buttons">
-              {SPEED_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  className={`btn btn-speed ${animation.speed === value ? 'active' : ''}`}
-                  onClick={() => handleSpeedChange(value)}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="duration-slider-container">
+              <span className="duration-label">5s</span>
+              <input
+                type="range"
+                min="5"
+                max="30"
+                value={animation.duration}
+                onChange={handleDurationChange}
+                className="slider duration-slider"
+              />
+              <span className="duration-label">30s</span>
             </div>
           </div>
 

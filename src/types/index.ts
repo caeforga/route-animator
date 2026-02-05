@@ -62,7 +62,7 @@ export interface AnimationState {
   currentProgress: number; // 0-1 for overall progress
   currentSegmentIndex: number;
   segmentProgress: number; // 0-1 for current segment
-  speed: number; // Animation speed multiplier
+  duration: number; // Total animation duration in seconds (5-30)
 }
 
 // Map configuration
