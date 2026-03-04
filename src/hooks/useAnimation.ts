@@ -34,6 +34,7 @@ export interface AnimationFrame {
   currentSegmentIndex: number;
   drawnPath: Coordinates[];
   progress: number;
+  bearing: number;
 }
 
 export function useAnimation() {
@@ -124,11 +125,31 @@ export function useAnimation() {
       drawnPath.push(...(slicedLine.geometry.coordinates as Coordinates[]));
     }
 
+    // Calculate bearing using proportional look-ahead (15% of segment, clamped 1-8km)
+    let bearing = 0;
+    try {
+      const lookAheadKm = Math.max(1.0, Math.min(totalLength * 0.15, 8.0));
+      const lookAheadDist = Math.min(currentDistance + lookAheadKm, totalLength);
+      if (lookAheadDist > currentDistance + 0.001) {
+        const lookAheadPoint = turf.along(line, lookAheadDist, { units: 'kilometers' });
+        bearing = turf.bearing(point, lookAheadPoint);
+      } else if (smoothedPath.length >= 2) {
+        const lastIdx = smoothedPath.length - 1;
+        bearing = turf.bearing(
+          turf.point(smoothedPath[Math.max(0, lastIdx - 1)]),
+          turf.point(smoothedPath[lastIdx])
+        );
+      }
+    } catch {
+      bearing = 0;
+    }
+
     return {
       markerPosition,
       currentSegmentIndex,
       drawnPath,
       progress: currentProgress,
+      bearing,
     };
   }, [route, animation]);
 

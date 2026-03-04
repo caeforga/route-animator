@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import * as turf from '@turf/turf';
 import { useRouteStore } from '@/store/routeStore';
@@ -29,6 +29,26 @@ function smoothPath(coordinates: Coordinates[], transportMode: string): Coordina
   }
 }
 
+function lerp(start: number, end: number, amt: number): number {
+  return (1 - amt) * start + amt * end;
+}
+
+function lerpBearing(start: number, end: number, amt: number): number {
+  let diff = end - start;
+  while (diff > 180) diff -= 360;
+  while (diff < -180) diff += 360;
+  return start + diff * amt;
+}
+
+function calculateFollowZoom(routeLengthKm: number): number {
+  if (routeLengthKm < 2) return 16;
+  if (routeLengthKm < 10) return 14;
+  if (routeLengthKm < 50) return 12;
+  if (routeLengthKm < 200) return 10;
+  if (routeLengthKm < 1000) return 8;
+  return 6;
+}
+
 /**
  * Main map container component
  * 
@@ -38,6 +58,7 @@ function smoothPath(coordinates: Coordinates[], transportMode: string): Coordina
  * - Route lines
  * - Animation overlay
  * - Path node editing
+ * - Cinematic camera follow
  */
 
 mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
@@ -47,6 +68,12 @@ export function MapContainer() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const animationMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  // Camera follow refs
+  const savedCameraRef = useRef<{ center: Coordinates; zoom: number; bearing: number; pitch: number } | null>(null);
+  const lerpedCameraRef = useRef<{ lng: number; lat: number; bearing: number; zoom: number; pitch: number } | null>(null);
+  const wasPlayingRef = useRef(false);
+  const followZoomRef = useRef(13);
 
   const {
     route,
@@ -369,7 +396,7 @@ export function MapContainer() {
         
         (map.getSource('route') as mapboxgl.GeoJSONSource).setData({
           type: 'FeatureCollection',
-          features,
+          features: features as GeoJSON.Feature[],
         });
       }
       
@@ -641,6 +668,46 @@ export function MapContainer() {
         );
         animationMarkerRef.current.getElement().innerHTML = config.icon;
       }
+
+      // Cinematic camera follow with LERP smoothing
+      const currentAnimation = useRouteStore.getState().animation;
+      if (currentAnimation.cameraFollow && currentAnimation.isPlaying) {
+        const map = mapRef.current;
+        const targetLng = frame.markerPosition[0];
+        const targetLat = frame.markerPosition[1];
+        const targetBearing = frame.bearing;
+        const targetZoom = followZoomRef.current + currentAnimation.cameraZoomExtra;
+        const targetPitch = 50;
+
+        if (!lerpedCameraRef.current) {
+          lerpedCameraRef.current = {
+            lng: map.getCenter().lng,
+            lat: map.getCenter().lat,
+            bearing: map.getBearing(),
+            zoom: map.getZoom(),
+            pitch: map.getPitch(),
+          };
+        }
+
+        // Adaptive LERP: at higher zoom the camera must track tighter to keep vehicle centered
+        const currentZoom = lerpedCameraRef.current.zoom;
+        const posLerp = 0.04 + Math.max(0, (currentZoom - 12) * 0.02);
+        const bearingLerp = 0.006;
+        const zoomPitchLerp = 0.03;
+
+        lerpedCameraRef.current.lng = lerp(lerpedCameraRef.current.lng, targetLng, posLerp);
+        lerpedCameraRef.current.lat = lerp(lerpedCameraRef.current.lat, targetLat, posLerp);
+        lerpedCameraRef.current.bearing = lerpBearing(lerpedCameraRef.current.bearing, targetBearing, bearingLerp);
+        lerpedCameraRef.current.zoom = lerp(lerpedCameraRef.current.zoom, targetZoom, zoomPitchLerp);
+        lerpedCameraRef.current.pitch = lerp(lerpedCameraRef.current.pitch, targetPitch, zoomPitchLerp);
+
+        map.jumpTo({
+          center: [lerpedCameraRef.current.lng, lerpedCameraRef.current.lat],
+          bearing: lerpedCameraRef.current.bearing,
+          zoom: lerpedCameraRef.current.zoom,
+          pitch: lerpedCameraRef.current.pitch,
+        });
+      }
     }
   };
 
@@ -672,6 +739,80 @@ export function MapContainer() {
       updateAnimationVisuals();
     }
   }, [progress, route?.segments, isPlaying]);
+
+  // Camera follow: handle play start (save state, calc zoom) and play end (zoom-out or restore)
+  useEffect(() => {
+    const map = mapRef.current;
+    const state = useRouteStore.getState();
+    const currentAnimation = state.animation;
+    const currentRoute = state.route;
+
+    if (isPlaying && !wasPlayingRef.current && currentAnimation.cameraFollow) {
+      if (map) {
+        savedCameraRef.current = {
+          center: [map.getCenter().lng, map.getCenter().lat] as Coordinates,
+          zoom: map.getZoom(),
+          bearing: map.getBearing(),
+          pitch: map.getPitch(),
+        };
+
+        if (currentRoute) {
+          let totalLength = 0;
+          currentRoute.segments.forEach(seg => {
+            try {
+              const line = turf.lineString(seg.path);
+              totalLength += turf.length(line, { units: 'kilometers' });
+            } catch { /* skip invalid segments */ }
+          });
+          followZoomRef.current = calculateFollowZoom(totalLength);
+        }
+
+        lerpedCameraRef.current = null;
+      }
+    }
+
+    if (!isPlaying && wasPlayingRef.current && currentAnimation.cameraFollow) {
+      if (map && currentRoute) {
+        const animProgress = currentAnimation.currentProgress;
+        if (animProgress >= 0.99) {
+          const allCoords: Coordinates[] = currentRoute.segments.flatMap(s => s.path);
+          if (allCoords.length > 0) {
+            const bounds = new mapboxgl.LngLatBounds(allCoords[0], allCoords[0]);
+            allCoords.forEach(c => bounds.extend(c as mapboxgl.LngLatLike));
+
+            map.once('moveend', () => {
+              setTimeout(() => {
+                const latest = useRouteStore.getState();
+                if (!latest.animation.isPlaying && latest.animation.currentProgress >= 0.99) {
+                  latest.stopAnimation();
+                }
+              }, 1000);
+            });
+
+            map.fitBounds(bounds, {
+              padding: 80,
+              pitch: 0,
+              bearing: 0,
+              duration: 2500,
+            });
+          }
+        } else if (savedCameraRef.current) {
+          map.flyTo({
+            center: savedCameraRef.current.center,
+            zoom: savedCameraRef.current.zoom,
+            bearing: savedCameraRef.current.bearing,
+            pitch: savedCameraRef.current.pitch,
+            duration: 1500,
+          });
+        }
+      }
+
+      lerpedCameraRef.current = null;
+      savedCameraRef.current = null;
+    }
+
+    wasPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   // Animation loop (only runs when playing)
   useEffect(() => {

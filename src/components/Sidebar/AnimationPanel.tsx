@@ -4,7 +4,10 @@ import {
   Play, 
   Pause, 
   RotateCcw,
-  Clock
+  Clock,
+  Video,
+  VideoOff,
+  ZoomIn
 } from 'lucide-react';
 
 /**
@@ -18,7 +21,7 @@ import {
  */
 
 export function AnimationPanel() {
-  const { route, setAnimationProgress, setAnimationDuration } = useRouteStore();
+  const { route, setAnimationProgress, setAnimationDuration, setCameraFollow, setCameraZoomExtra } = useRouteStore();
   const { 
     animation, 
     play, 
@@ -119,6 +122,44 @@ export function AnimationPanel() {
               <span className="duration-label">30s</span>
             </div>
           </div>
+
+          {/* Camera Follow Toggle */}
+          <div className="animation-camera">
+            <label className="form-label">
+              {animation.cameraFollow ? <Video size={16} /> : <VideoOff size={16} />}
+              Cámara cinemática
+            </label>
+            <button
+              className={`btn btn-sm ${animation.cameraFollow ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setCameraFollow(!animation.cameraFollow)}
+              disabled={isPlaying}
+              title={animation.cameraFollow ? 'Desactivar seguimiento de cámara' : 'Activar seguimiento de cámara'}
+            >
+              {animation.cameraFollow ? 'Activado' : 'Desactivado'}
+            </button>
+          </div>
+
+          {/* Camera Zoom Control (only when camera follow is on) */}
+          {animation.cameraFollow && (
+            <div className="animation-camera-zoom">
+              <label className="form-label">
+                <ZoomIn size={16} />
+                Acercamiento: +{animation.cameraZoomExtra}
+              </label>
+              <div className="duration-slider-container">
+                <span className="duration-label">Lejos</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="8"
+                  value={animation.cameraZoomExtra}
+                  onChange={(e) => setCameraZoomExtra(parseInt(e.target.value, 10))}
+                  className="slider duration-slider"
+                />
+                <span className="duration-label">Cerca</span>
+              </div>
+            </div>
+          )}
 
           {/* Animation Info */}
           <div className="animation-info">

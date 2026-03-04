@@ -63,6 +63,8 @@ export interface AnimationState {
   currentSegmentIndex: number;
   segmentProgress: number; // 0-1 for current segment
   duration: number; // Total animation duration in seconds (5-30)
+  cameraFollow: boolean; // Cinematic camera follow mode
+  cameraZoomExtra: number; // Extra zoom added to auto-calculated follow zoom (0-8)
 }
 
 // Map configuration

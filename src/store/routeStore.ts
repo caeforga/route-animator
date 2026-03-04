@@ -65,6 +65,8 @@ interface RouteStore {
   setAnimationProgress: (progress: number) => void;
   setAnimationDuration: (duration: number) => void;
   updateAnimationFrame: (deltaTime: number) => void;
+  setCameraFollow: (enabled: boolean) => void;
+  setCameraZoomExtra: (zoom: number) => void;
 
   // Map actions
   setMapStyle: (style: MapStyle) => void;
@@ -101,7 +103,9 @@ export const useRouteStore = create<RouteStore>()(
       currentProgress: 0,
       currentSegmentIndex: 0,
       segmentProgress: 0,
-      duration: 15, // Default 15 seconds
+      duration: 15,
+      cameraFollow: true,
+      cameraZoomExtra: 2,
     },
 
     mapConfig: {
@@ -354,11 +358,16 @@ export const useRouteStore = create<RouteStore>()(
 
     // Animation actions
     playAnimation: () => {
+      const { animation } = get();
+      const isAtEnd = animation.currentProgress >= 1;
       set({
         animation: {
-          ...get().animation,
+          ...animation,
           isPlaying: true,
           isPaused: false,
+          currentProgress: isAtEnd ? 0 : animation.currentProgress,
+          currentSegmentIndex: isAtEnd ? 0 : animation.currentSegmentIndex,
+          segmentProgress: isAtEnd ? 0 : animation.segmentProgress,
         },
       });
     },
@@ -374,6 +383,7 @@ export const useRouteStore = create<RouteStore>()(
     },
 
     stopAnimation: () => {
+      const { animation } = get();
       set({
         animation: {
           isPlaying: false,
@@ -381,7 +391,9 @@ export const useRouteStore = create<RouteStore>()(
           currentProgress: 0,
           currentSegmentIndex: 0,
           segmentProgress: 0,
-          duration: get().animation.duration,
+          duration: animation.duration,
+          cameraFollow: animation.cameraFollow,
+          cameraZoomExtra: animation.cameraZoomExtra,
         },
       });
     },
@@ -416,26 +428,56 @@ export const useRouteStore = create<RouteStore>()(
       });
     },
 
+    setCameraFollow: (enabled) => {
+      set({
+        animation: {
+          ...get().animation,
+          cameraFollow: enabled,
+        },
+      });
+    },
+
+    setCameraZoomExtra: (zoom) => {
+      set({
+        animation: {
+          ...get().animation,
+          cameraZoomExtra: Math.max(0, Math.min(8, zoom)),
+        },
+      });
+    },
+
     updateAnimationFrame: (deltaTime) => {
       const { animation, route } = get();
       if (!route || !animation.isPlaying || route.segments.length === 0) return;
 
-      // Progress increment based on duration: complete animation in 'duration' seconds
       const progressIncrement = deltaTime / (animation.duration * 1000);
       const newProgress = Math.min(animation.currentProgress + progressIncrement, 1);
 
       if (newProgress >= 1) {
-        // Animation complete - reset to beginning
-        set({
-          animation: {
-            ...animation,
-            isPlaying: false,
-            isPaused: false,
-            currentProgress: 0,
-            currentSegmentIndex: 0,
-            segmentProgress: 0,
-          },
-        });
+        if (animation.cameraFollow) {
+          // Keep at 100% so MapContainer can handle the zoom-out
+          set({
+            animation: {
+              ...animation,
+              isPlaying: false,
+              isPaused: false,
+              currentProgress: 1,
+              currentSegmentIndex: route.segments.length - 1,
+              segmentProgress: 1,
+            },
+          });
+        } else {
+          set({
+            animation: {
+              ...animation,
+              isPlaying: false,
+              isPaused: false,
+              currentProgress: 0,
+              currentSegmentIndex: 0,
+              segmentProgress: 0,
+            },
+          });
+        }
       } else {
         get().setAnimationProgress(newProgress);
       }
@@ -513,6 +555,8 @@ export const useRouteStore = create<RouteStore>()(
           currentSegmentIndex: 0,
           segmentProgress: 0,
           duration: 15,
+          cameraFollow: get().animation.cameraFollow,
+          cameraZoomExtra: get().animation.cameraZoomExtra,
         },
       });
     },
@@ -529,6 +573,8 @@ export const useRouteStore = create<RouteStore>()(
           currentSegmentIndex: 0,
           segmentProgress: 0,
           duration: 15,
+          cameraFollow: get().animation.cameraFollow,
+          cameraZoomExtra: get().animation.cameraZoomExtra,
         },
       });
     },
